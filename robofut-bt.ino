@@ -29,7 +29,7 @@ void setup() {
   Serial.begin(115200);
   delay(10);
 
-  SerialBT.begin("prueba2");             // Initialize bt with the name of the device
+  SerialBT.begin("prueba-roger");             // Initialize bt with the name of the device
   SerialBT.register_callback(BT_EventHandler);  // Register callback function for BT events
   Serial.println("El dispositivo Bluetooth está listo para emparejarse.");
 
