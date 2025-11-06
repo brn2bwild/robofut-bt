@@ -1,3 +1,4 @@
+#include "esp32-hal.h"
 #include <stdint.h>
 #include "Arduino.h"
 #include "Motors.h"
@@ -12,7 +13,7 @@ Motors::Motors() {
   pinMode(MOTOR_RIGHT_A, OUTPUT);
   pinMode(MOTOR_RIGHT_B, OUTPUT);
   pinMode(MOTOR_RIGHT_EN, OUTPUT);
-  
+
   // Set motors on stop
   analogWrite(MOTOR_LEFT_EN, 0);
   analogWrite(MOTOR_RIGHT_EN, 0);
@@ -24,9 +25,38 @@ Motors::Motors() {
   digitalWrite(MOTOR_RIGHT_B, LOW);
 }
 
-void Motors::begin(uint8_t speed) {
-  analogWrite(MOTOR_LEFT_EN, speed);
-  analogWrite(MOTOR_RIGHT_EN, speed);
+// void Motors::begin(uint8_t speed) {
+//   analogWrite(MOTOR_LEFT_EN, speed);
+//   analogWrite(MOTOR_RIGHT_EN, speed);
+// }
+
+void Motors::leftMotor(int speed) {
+  if (speed >= 0) {
+    digitalWrite(MOTOR_LEFT_A, HIGH);
+    digitalWrite(MOTOR_LEFT_B, LOW);
+  } else {
+    digitalWrite(MOTOR_LEFT_A, LOW);
+    digitalWrite(MOTOR_LEFT_B, HIGH);
+  }
+
+  analogWrite(MOTOR_LEFT_EN, abs(speed));
+}
+
+void Motors::rightMotor(int speed) {
+  if (speed >= 0) {
+    digitalWrite(MOTOR_RIGHT_A, HIGH);
+    digitalWrite(MOTOR_RIGHT_B, LOW);
+  } else {
+    digitalWrite(MOTOR_RIGHT_A, LOW);
+    digitalWrite(MOTOR_RIGHT_B, HIGH);
+  }
+
+  analogWrite(MOTOR_RIGHT_EN, abs(speed));
+}
+
+void Motors::motors(int left_speed, int right_speed){
+  leftMotor(left_speed);
+  rightMotor(right_speed);
 }
 
 void Motors::left_wheel_forward() {

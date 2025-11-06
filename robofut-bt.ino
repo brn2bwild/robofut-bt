@@ -1,17 +1,20 @@
 #include "BluetoothSerial.h"
 #include "Motors.h"
 
+// #define DEBUG // Constante para debuggear
+
 #define LED_BUILTIN 2  // Define led builtin pin esp32 dev module
+
+#define LEFT_SPEED 180   // Const for left motor speed
+#define RIGHT_SPEED 180  // Const for right motor speed
+
+#define LED_BT_CLIENT_CONNECTED_DELAY 7
+#define LED_BT_INITIALIZED_DELAY 1
 
 BluetoothSerial SerialBT;
 Motors motors;
 
-const unsigned long led_bt_client_connected_delay = 7;
-const unsigned long led_bt_bt_initialized_delay = 1;
-
 char incoming_command;  // Variable for receive data from bt
-
-int speed = 180;  // Variable for speed
 
 unsigned long previous_led_millis = 0;
 int leg_brightness = 0;
@@ -25,15 +28,15 @@ void setup() {
   // Set the onboard LED to LOW (inverted logic)
   digitalWrite(LED_BUILTIN, !LOW);
 
+  SerialBT.begin("Oveja");                      // Initialize bt with the name of the device
+  SerialBT.register_callback(BT_EventHandler);  // Register callback function for BT events
+
+#ifdef DEBUG
   // Initialize serial port
   Serial.begin(115200);
   delay(10);
-
-  SerialBT.begin("prueba-roger");             // Initialize bt with the name of the device
-  SerialBT.register_callback(BT_EventHandler);  // Register callback function for BT events
   Serial.println("El dispositivo Bluetooth está listo para emparejarse.");
-
-  motors.begin(speed);
+#endif
 }
 
 // Bluetooth Event Handler CallBack Function Definition
@@ -57,36 +60,49 @@ void BT_EventHandler(esp_spp_cb_event_t event, esp_spp_cb_param_t *param) {
 }
 
 void set_direction() {
+#ifndef DEBUG
   switch (incoming_command) {
     case 'f':
-      motors.go_forward();
+      motors.motors(LEFT_SPEED, RIGHT_SPEED);
+      break;
+    case 'b':
+      motors.motors(-LEFT_SPEED, -RIGHT_SPEED);
+      break;
+    case 'l':
+      motors.motors(-LEFT_SPEED, RIGHT_SPEED);
+      break;
+    case 'r':
+      motors.motors(LEFT_SPEED, -RIGHT_SPEED);
+      break;
+    case 's':
+      motors.motors(0, 0);
+      break;
+  }
+#endif
+
+#ifdef DEBUG
+  switch (incoming_command) {
+    case 'f':
       Serial.println("go forward");
       break;
-
     case 'b':
-      motors.go_back();
       Serial.println("go back");
       break;
-
     case 'l':
-      motors.go_left();
       Serial.println("go left");
       break;
-
     case 'r':
-      motors.go_right();
       Serial.println("go right");
       break;
-
     case 's':
-      motors.stop();
       Serial.println("stop");
       break;
   }
+#endif
 }
 
 void loop() {
-  if (millis() - previous_led_millis >= led_bt_client_connected_delay && bt_status == ESP_SPP_SRV_OPEN_EVT) {
+  if (millis() - previous_led_millis >= LED_BT_CLIENT_CONNECTED_DELAY && bt_status == ESP_SPP_SRV_OPEN_EVT) {
     previous_led_millis = millis();
 
     leg_brightness += brightness_step;
@@ -97,7 +113,7 @@ void loop() {
     analogWrite(LED_BUILTIN, leg_brightness);
   }
 
-  if (millis() - previous_led_millis >= led_bt_bt_initialized_delay && (bt_status == ESP_SPP_START_EVT || bt_status == ESP_SPP_CLOSE_EVT)) {
+  if (millis() - previous_led_millis >= LED_BT_INITIALIZED_DELAY && (bt_status == ESP_SPP_START_EVT || bt_status == ESP_SPP_CLOSE_EVT)) {
     previous_led_millis = millis();
 
     leg_brightness += brightness_step;

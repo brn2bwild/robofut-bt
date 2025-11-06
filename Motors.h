@@ -13,7 +13,10 @@ public:
   const uint8_t MOTOR_RIGHT_EN = 25;
 
   Motors();
-  void begin(uint8_t speed);
+  // void begin(uint8_t speed);
+  void leftMotor(int speed);
+  void rightMotor(int speed);
+  void motors(int left_speed, int right_speed);
   void left_wheel_forward();
   void right_wheel_forward();
   void left_wheel_back();
