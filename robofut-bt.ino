@@ -83,16 +83,16 @@ void set_direction() {
 #ifdef DEBUG
   switch (incoming_command) {
     case 'f':
-      Serial.println("go forward");
+      Serial.println("forward");
       break;
     case 'b':
-      Serial.println("go back");
+      Serial.println("back");
       break;
     case 'l':
-      Serial.println("go left");
+      Serial.println("left");
       break;
     case 'r':
-      Serial.println("go right");
+      Serial.println("right");
       break;
     case 's':
       Serial.println("stop");
