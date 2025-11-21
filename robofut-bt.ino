@@ -28,7 +28,7 @@ void setup() {
   // Set the onboard LED to LOW (inverted logic)
   digitalWrite(LED_BUILTIN, !LOW);
 
-  SerialBT.begin("Oveja");                      // Initialize bt with the name of the device
+  SerialBT.begin("domi");                      // Initialize bt with the name of the device
   SerialBT.register_callback(BT_EventHandler);  // Register callback function for BT events
 
 #ifdef DEBUG
