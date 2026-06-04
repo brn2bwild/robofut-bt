@@ -7,6 +7,9 @@ ControllerPtr myControllers[BP32_MAX_GAMEPADS];
 
 Motors motors(12, 14, 13, 27, 26, 25, 1000, 10);
 
+const int MAX_SPEED = 1020;
+const int MIN_SPEED = MAX_SPEED * (-1);
+
 // This callback gets called any time a new gamepad is connected.
 // Up to 4 gamepads can be connected at the same time.
 void onConnectedController(ControllerPtr ctl) {
@@ -281,23 +284,23 @@ void loop() {
   if (dataUpdated) {
     if (myControllers[0] != nullptr && myControllers[0]->isConnected()) {
       // Read the left joystick axes (ranging -512 to 512)
-      int throttle = map(myControllers[0]->axisY(), 512, -512, -1020, 1020);  // Forward/Backward
-      int steering = map(myControllers[0]->axisRX(), -512, 512, -1020, 1020);  // Left/Right
+      int throttle = map(myControllers[0]->axisY(), 512, -512, MIN_SPEED, MAX_SPEED);   // Forward/Backward
+      int steering = map(myControllers[0]->axisRX(), -512, 512, MIN_SPEED, MAX_SPEED);  // Left/Right
 
       // Mix throttle and steering for differential drive
       int leftSpeed = throttle + steering;
       int rightSpeed = throttle - steering;
 
       // Constrain the speeds to PWM limits (-255 to 255)
-      leftSpeed = constrain(leftSpeed, -1020, 1020);
-      rightSpeed = constrain(rightSpeed, -1020, 1020);
+      leftSpeed = constrain(leftSpeed, MIN_SPEED, MAX_SPEED);
+      rightSpeed = constrain(rightSpeed, MIN_SPEED, MAX_SPEED);
 
       Serial.print("lf: ");
       Serial.print(leftSpeed);
       Serial.print(", rs: ");
       Serial.print(rightSpeed);
       Serial.println("");
-        // processControllers();
+      // processControllers();
 
       motors.speeds(leftSpeed, rightSpeed);
     }
