@@ -1,8 +1,11 @@
 #include <Bluepad32.h>
+#include "Motors.h"
 
 #define BP32_MAX_GAMEPADS 1
 
 ControllerPtr myControllers[BP32_MAX_GAMEPADS];
+
+Motors motors(27, 26, 25, 14, 12, 13, 1000, 10);
 
 // This callback gets called any time a new gamepad is connected.
 // Up to 4 gamepads can be connected at the same time.
@@ -294,7 +297,9 @@ void loop() {
       Serial.print(", rs: ");
       Serial.print(rightSpeed);
       Serial.println("");
-    //   processControllers();
+      //   processControllers();
+
+      motors.speeds(leftSpeed, rightSpeed);
     }
 
     // The main loop must have some kind of "yield to lower priority task" event.
