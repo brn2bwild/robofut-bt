@@ -1,14 +1,29 @@
 #include <Bluepad32.h>
 #include "Motors.h"
+#include <Preferences.h>
 
 #define BP32_MAX_GAMEPADS 1
 
 ControllerPtr myControllers[BP32_MAX_GAMEPADS];
 
-Motors motors(12, 14, 13, 27, 26, 25, 1000, 10);
+Motors motors(27, 26, 25, 12, 14, 13, 1000, 10);  // Tarjeta
+// Motors motors(14, 12, 13, 27, 26, 25, 1000, 10);  // Parce
 
-const int MAX_SPEED = 1020;
-const int MIN_SPEED = MAX_SPEED * (-1);
+Preferences preferences;
+
+// Input points (0 to 512) with a flat deadzone from 0 to 15
+int inputPoints[] = { 0, 15, 64, 192, 256, 320, 448, 512 };
+
+// Output points matching the deadzone structure (0 to 1023)
+// int outputPoints[] = { 0, 0, 60, 280, 512, 744, 964, 1023 };
+
+// Profile scaling factors (0.0 to 1.0) representing the S-curve shape
+const float curveProfile[] = { 0.0, 0.0, 0.058, 0.273, 0.500, 0.727, 0.942, 1.0 };
+
+// int max_speeds[] = { 500, 600, 700, 800, 900, 1022 };
+int max_speed, min_speed, left_speed, right_speed;
+
+// int MIN_SPEED = max_speed * (-1);
 
 // This callback gets called any time a new gamepad is connected.
 // Up to 4 gamepads can be connected at the same time.
@@ -251,12 +266,104 @@ void processControllers() {
   }
 }
 
+int multiMapCurve(int val) {
+  // Guard against out-of-bounds inputs
+  if (val <= inputPoints[0]) return 0;
+  if (val >= inputPoints[7]) return max_speed;
+
+  // 8 elements mean we loop through 7 interpolation bins
+  for (int i = 0; i < 7; i++) {
+    if (val >= inputPoints[i] && val <= inputPoints[i + 1]) {
+      // Linear interpolation between the profile steps
+      float scaledPos = map(val, inputPoints[i], inputPoints[i + 1], 0, 1000) / 1000.0;
+      float interpolatedProfile = curveProfile[i] + scaledPos * (curveProfile[i + 1] - curveProfile[i]);
+
+      // Scale the resulting factor against your dynamic max_speed variable
+      return (int)(interpolatedProfile * max_speed);
+    }
+  }
+  return 0;
+}
+
+void proccessSpeeds() {
+  // Read the left joystick axes (ranging -512 to 512)
+  // int throttle = map(myControllers[0]->axisY(), 512, -512, min_speed, max_speed);   // Forward/Backward
+  // int steering = map(myControllers[0]->axisRX(), -512, 512, min_speed, max_speed);  // Left/Right
+
+  int throttle = myControllers[0]->axisY() * (-1);  // Forward/Backward
+  int steering = myControllers[0]->axisRX();        // Left/Right
+
+  // Mix throttle and steering for differential drive
+  left_speed = throttle + steering;
+  right_speed = throttle - steering;
+
+  // Constrain the speeds to PWM limits (-255 to 255)
+  // left_speed = constrain(left_speed, min_speed, max_speed);
+  // right_speed = constrain(right_speed, min_speed, max_speed);
+
+  if (left_speed < 0) {
+    left_speed = multiMapCurve(abs(left_speed)) * (-1);
+  } else {
+    left_speed = multiMapCurve(left_speed);
+  }
+
+  if (right_speed < 0) {
+    right_speed = multiMapCurve(abs(right_speed)) * (-1);
+  } else {
+    right_speed = multiMapCurve(right_speed);
+  }
+
+  motors.speeds(left_speed, right_speed);
+}
+
+void proccessMaxSpeeds() {
+  if (myControllers[0]->buttons() == 0x0008) {
+    max_speed += 100;
+    min_speed = max_speed * (-1);
+
+    if (max_speed >= 1022) max_speed = 1022;
+    if (min_speed <= -1022) min_speed = -1022;
+    preferences.putInt("max_speed", max_speed);
+  }
+
+  if (myControllers[0]->buttons() == 0x0001) {
+    max_speed -= 100;
+    min_speed = max_speed * (-1);
+
+    if (max_speed <= 200) max_speed = 200;
+    if (min_speed >= -200) min_speed = -200;
+    preferences.putInt("max_speed", max_speed);
+  }
+}
+
+void printSettings() {
+  Serial.print("max_s: ");
+  Serial.print(max_speed);
+  Serial.print(", lf: ");
+  Serial.print(left_speed);
+  Serial.print(", rs: ");
+  Serial.print(right_speed);
+  Serial.println("");
+
+  // Serial.printf("Firmware: %s\n", BP32.firmwareVersion());
+  // const uint8_t* addr = BP32.localBdAddress();
+  // Serial.printf("BD Addr: %2X:%2X:%2X:%2X:%2X:%2X\n", addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+}
+
 // Arduino setup function. Runs in CPU 1
 void setup() {
   Serial.begin(115200);
-  Serial.printf("Firmware: %s\n", BP32.firmwareVersion());
-  const uint8_t* addr = BP32.localBdAddress();
-  Serial.printf("BD Addr: %2X:%2X:%2X:%2X:%2X:%2X\n", addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+  Serial.println("");
+
+  // Begin preferences
+  preferences.begin("settings", false);
+
+  max_speed = preferences.getInt("max_speed", 0);
+  min_speed = max_speed * (-1);
+
+  Serial.println("Preferences inited");
+
+  // preferences.end();
 
   // Setup the Bluepad32 callbacks
   BP32.setup(&onConnectedController, &onDisconnectedController);
@@ -281,29 +388,16 @@ void loop() {
   // This call fetches all the controllers' data.
   // Call this function in your main loop.
   bool dataUpdated = BP32.update();
-  if (dataUpdated) {
-    if (myControllers[0] != nullptr && myControllers[0]->isConnected()) {
-      // Read the left joystick axes (ranging -512 to 512)
-      int throttle = map(myControllers[0]->axisY(), 512, -512, MIN_SPEED, MAX_SPEED);   // Forward/Backward
-      int steering = map(myControllers[0]->axisRX(), -512, 512, MIN_SPEED, MAX_SPEED);  // Left/Right
 
-      // Mix throttle and steering for differential drive
-      int leftSpeed = throttle + steering;
-      int rightSpeed = throttle - steering;
+  if (dataUpdated && myControllers[0] != nullptr && myControllers[0]->isConnected()) {
 
-      // Constrain the speeds to PWM limits (-255 to 255)
-      leftSpeed = constrain(leftSpeed, MIN_SPEED, MAX_SPEED);
-      rightSpeed = constrain(rightSpeed, MIN_SPEED, MAX_SPEED);
+    proccessMaxSpeeds();
 
-      Serial.print("lf: ");
-      Serial.print(leftSpeed);
-      Serial.print(", rs: ");
-      Serial.print(rightSpeed);
-      Serial.println("");
-      // processControllers();
+    proccessSpeeds();
 
-      motors.speeds(leftSpeed, rightSpeed);
-    }
+    printSettings();
+
+    // processControllers();
 
     // The main loop must have some kind of "yield to lower priority task" event.
     // Otherwise, the watchdog will get triggered.
@@ -312,6 +406,6 @@ void loop() {
     // https://stackoverflow.com/questions/66278271/task-watchdog-got-triggered-the-tasks-did-not-reset-the-watchdog-in-time
 
     //     vTaskDelay(1);
-    delay(150);
+    delay(100);
   }
 }
