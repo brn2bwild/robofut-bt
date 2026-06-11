@@ -12,7 +12,7 @@ Motors motors(27, 26, 25, 12, 14, 13, 1000, 10);  // Tarjeta
 Preferences preferences;
 
 // Input points (0 to 512) with a flat deadzone from 0 to 15
-int inputPoints[] = { 0, 15, 64, 192, 256, 320, 448, 512 };
+int inputPoints[] = { 0, 30, 64, 192, 256, 320, 448, 512 };
 
 // Output points matching the deadzone structure (0 to 1023)
 // int outputPoints[] = { 0, 0, 60, 280, 512, 744, 964, 1023 };
@@ -21,7 +21,7 @@ int inputPoints[] = { 0, 15, 64, 192, 256, 320, 448, 512 };
 const float curveProfile[] = { 0.0, 0.0, 0.058, 0.273, 0.500, 0.727, 0.942, 1.0 };
 
 // int max_speeds[] = { 500, 600, 700, 800, 900, 1022 };
-int max_speed, min_speed, left_speed, right_speed;
+int max_speed, min_speed, left_speed, right_speed, lower_speed;
 
 // int MIN_SPEED = max_speed * (-1);
 
@@ -270,16 +270,15 @@ int multiMapCurve(int val) {
   // Guard against out-of-bounds inputs
   if (val <= inputPoints[0]) return 0;
   if (val >= inputPoints[7]) return max_speed;
+  if (val <= inputPoints[1]) return 0;  // Inside deadzone
 
-  // 8 elements mean we loop through 7 interpolation bins
   for (int i = 0; i < 7; i++) {
     if (val >= inputPoints[i] && val <= inputPoints[i + 1]) {
-      // Linear interpolation between the profile steps
-      float scaledPos = map(val, inputPoints[i], inputPoints[i + 1], 0, 1000) / 1000.0;
-      float interpolatedProfile = curveProfile[i] + scaledPos * (curveProfile[i + 1] - curveProfile[i]);
+      float scaled_pos = map(val, inputPoints[i], inputPoints[i + 1], 0, 1000) / 1000.0;
+      float interpolate_profile = curveProfile[i] + scaled_pos * (curveProfile[i + 1] - curveProfile[i]);
 
-      // Scale the resulting factor against your dynamic max_speed variable
-      return (int)(interpolatedProfile * max_speed);
+      // Scale profile cleanly inside your dynamic min/max speed window
+      return lower_speed + (int)(interpolate_profile * (max_speed - lower_speed));
     }
   }
   return 0;
@@ -287,37 +286,28 @@ int multiMapCurve(int val) {
 
 void proccessSpeeds() {
   // Read the left joystick axes (ranging -512 to 512)
-  // int throttle = map(myControllers[0]->axisY(), 512, -512, min_speed, max_speed);   // Forward/Backward
-  // int steering = map(myControllers[0]->axisRX(), -512, 512, min_speed, max_speed);  // Left/Right
+  int y_input = myControllers[0]->axisY();
+  int x_input = myControllers[0]->axisRX();
 
-  int throttle = myControllers[0]->axisY() * (-1);  // Forward/Backward
-  int steering = myControllers[0]->axisRX();        // Left/Right
+  int y_direction = (y_input >= 0) ? -1 : 1;
+  int x_direction = (x_input >= 0) ? 1 : -1;
+
+  int curve_y = multiMapCurve(abs(y_input)) * y_direction;
+  int curve_x = multiMapCurve(abs(x_input)) * x_direction;
 
   // Mix throttle and steering for differential drive
-  left_speed = throttle + steering;
-  right_speed = throttle - steering;
+  left_speed = curve_y + curve_x;
+  right_speed = curve_y - curve_x;
 
   // Constrain the speeds to PWM limits (-255 to 255)
-  // left_speed = constrain(left_speed, min_speed, max_speed);
-  // right_speed = constrain(right_speed, min_speed, max_speed);
-
-  if (left_speed < 0) {
-    left_speed = multiMapCurve(abs(left_speed)) * (-1);
-  } else {
-    left_speed = multiMapCurve(left_speed);
-  }
-
-  if (right_speed < 0) {
-    right_speed = multiMapCurve(abs(right_speed)) * (-1);
-  } else {
-    right_speed = multiMapCurve(right_speed);
-  }
+  left_speed = constrain(left_speed, min_speed, max_speed);
+  right_speed = constrain(right_speed, min_speed, max_speed);
 
   motors.speeds(left_speed, right_speed);
 }
 
 void proccessMaxSpeeds() {
-  if (myControllers[0]->buttons() == 0x0008) {
+  if (myControllers[0]->buttons() == 0x0008 || myControllers[0]->throttle() > 700) {
     max_speed += 100;
     min_speed = max_speed * (-1);
 
@@ -326,12 +316,12 @@ void proccessMaxSpeeds() {
     preferences.putInt("max_speed", max_speed);
   }
 
-  if (myControllers[0]->buttons() == 0x0001) {
+  if (myControllers[0]->buttons() == 0x0001 || myControllers[0]->brake() > 700) {
     max_speed -= 100;
     min_speed = max_speed * (-1);
 
-    if (max_speed <= 200) max_speed = 200;
-    if (min_speed >= -200) min_speed = -200;
+    if (max_speed <= lower_speed) max_speed = lower_speed;
+    if (min_speed >= -lower_speed) min_speed = -lower_speed;
     preferences.putInt("max_speed", max_speed);
   }
 }
@@ -395,7 +385,7 @@ void loop() {
 
     proccessSpeeds();
 
-    printSettings();
+    // printSettings();
 
     // processControllers();
 
