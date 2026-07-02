@@ -20,10 +20,15 @@ int inputPoints[] = { 0, 30, 64, 192, 256, 320, 448, 512 };
 // Profile scaling factors (0.0 to 1.0) representing the S-curve shape
 const float curveProfile[] = { 0.0, 0.0, 0.058, 0.273, 0.500, 0.727, 0.942, 1.0 };
 
-// int max_speeds[] = { 500, 600, 700, 800, 900, 1022 };
-int max_speed, min_speed, left_speed, right_speed, lower_speed;
+// int base_max_speeds[] = { 500, 600, 700, 800, 900, 1022 };
+int base_max_speed, max_speed, min_speed, left_speed, right_speed;
 
-// int MIN_SPEED = max_speed * (-1);
+// variable to avoid sound from motors
+int lower_speed = 200;
+
+float turbo = 0.0;
+
+// int min_speed = base_max_speed * (-1);
 
 // This callback gets called any time a new gamepad is connected.
 // Up to 4 gamepads can be connected at the same time.
@@ -284,6 +289,10 @@ int multiMapCurve(int val) {
   return 0;
 }
 
+float mapFloat(float x, float in_min, float in_max, float out_min, float out_max) {
+  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
+
 void proccessSpeeds() {
   // Read the left joystick axes (ranging -512 to 512)
   int y_input = myControllers[0]->axisY();
@@ -292,46 +301,85 @@ void proccessSpeeds() {
   int y_direction = (y_input >= 0) ? -1 : 1;
   int x_direction = (x_input >= 0) ? 1 : -1;
 
+  turbo = mapFloat(myControllers[0]->brake(), 0.0, 1023.0, 1.0, 2.0);  // Code used for apply turbo with throttle joystick
+  // turbo = myControllers[0]->throttle();                          // Code used for apply turbo with throttle joystick
+
+  max_speed = base_max_speed * turbo;
+  min_speed = max_speed * (-1);
+
   int curve_y = multiMapCurve(abs(y_input)) * y_direction;
   int curve_x = multiMapCurve(abs(x_input)) * x_direction;
 
+  float turn_factor = (float)abs(curve_x) / base_max_speed;
+
+  float adaptative_forward_reduction = 1.0 - (turn_factor * 0.4);
+  float adaptative_curve_y = curve_y * adaptative_forward_reduction;
+
+  float raw_left = adaptative_curve_y + curve_x;
+  float raw_right = adaptative_curve_y - curve_x;
+
+  /*
+  //This code is used for simple differential drive
   // Mix throttle and steering for differential drive
   left_speed = curve_y + curve_x;
   right_speed = curve_y - curve_x;
+  */
+
+  /*
+  //  This code using a scale factor based on max joystick value
+  float raw_left = curve_y + curve_x;
+  float raw_right = curve_y - curve_x;
+  float max_raw = max(abs(raw_left), abs(raw_right));
+
+  if (max_raw > base_max_speed) {
+    float scale_factor = (float)base_max_speed / max_raw;
+
+    raw_left *= scale_factor;
+    raw_right *= scale_factor;
+  }
+  */
+
+  left_speed = (int)raw_left;
+  right_speed = (int)raw_right;
 
   // Constrain the speeds to PWM limits (-255 to 255)
   left_speed = constrain(left_speed, min_speed, max_speed);
   right_speed = constrain(right_speed, min_speed, max_speed);
 
+  left_speed = constrain(left_speed, -1022, 1022);
+  right_speed = constrain(right_speed, -1022, 1022);
+
   motors.speeds(left_speed, right_speed);
 }
 
 void proccessMaxSpeeds() {
-  if (myControllers[0]->buttons() == 0x0008 || myControllers[0]->throttle() > 700) {
-    max_speed += 100;
-    min_speed = max_speed * (-1);
+  if (myControllers[0]->buttons() == 0x0008) {
+    base_max_speed += 100;
+    if (abs(base_max_speed) >= 1022) base_max_speed = 1022;
 
-    if (max_speed >= 1022) max_speed = 1022;
-    if (min_speed <= -1022) min_speed = -1022;
-    preferences.putInt("max_speed", max_speed);
+    min_speed = base_max_speed * (-1);
+    preferences.putInt("base_max_speed", base_max_speed);
   }
 
-  if (myControllers[0]->buttons() == 0x0001 || myControllers[0]->brake() > 700) {
-    max_speed -= 100;
-    min_speed = max_speed * (-1);
+  if (myControllers[0]->buttons() == 0x0001) {
+    base_max_speed -= 100;
+    if (abs(base_max_speed) <= lower_speed) base_max_speed = lower_speed;
 
-    if (max_speed <= lower_speed) max_speed = lower_speed;
-    if (min_speed >= -lower_speed) min_speed = -lower_speed;
-    preferences.putInt("max_speed", max_speed);
+    min_speed = base_max_speed * (-1);
+    preferences.putInt("base_max_speed", base_max_speed);
   }
 }
 
 void printSettings() {
-  Serial.print("max_s: ");
+  Serial.print("b_s: ");
+  Serial.print(base_max_speed);
+  Serial.print(", trb: ");
+  Serial.print(turbo);
+  Serial.print(", m_s: ");
   Serial.print(max_speed);
-  Serial.print(", lf: ");
+  Serial.print(", l_f: ");
   Serial.print(left_speed);
-  Serial.print(", rs: ");
+  Serial.print(", r_s: ");
   Serial.print(right_speed);
   Serial.println("");
 
@@ -348,8 +396,9 @@ void setup() {
   // Begin preferences
   preferences.begin("settings", false);
 
-  max_speed = preferences.getInt("max_speed", 0);
-  min_speed = max_speed * (-1);
+  base_max_speed = preferences.getInt("base_max_speed", 0);
+  max_speed = base_max_speed;
+  min_speed = base_max_speed * (-1);
 
   Serial.println("Preferences inited");
 
@@ -385,7 +434,7 @@ void loop() {
 
     proccessSpeeds();
 
-    // printSettings();
+    printSettings();
 
     // processControllers();
 
